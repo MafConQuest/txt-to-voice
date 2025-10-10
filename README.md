@@ -1,4 +1,4 @@
-# 🎤 TXT-To-Voice - Professional Text-to-Speech
+# 🎤 TXT-To-Voice: Professional Text-to-Speech
 
 **Convert any text to natural speech with a simple hotkey!**
 
