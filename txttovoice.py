@@ -124,23 +124,47 @@ class TxtToVoiceApp:
         # Initialize history
         self.history = []
         
-        # Don't set any window icon to remove it from title bar completely
-        # This will show only the default Windows icon in title bar
+        # Set taskbar icon but keep title bar clean
         try:
-            # We can still try to set taskbar icon without affecting title bar
+            # Prefer PNG for better quality, fallback to ICO
             icon_paths = [
-                Path(__file__).parent / "txttovoice.ico",
+                Path(__file__).parent / "icons" / "txttovoice.png",  # High-quality PNG first
+                Path("icons") / "txttovoice.png",
+                Path(__file__).parent / "txttovoice.ico",           # New high-quality ICO
                 Path("txttovoice.ico"),
                 Path(__file__).parent / "icons" / "txttovoice.ico",
                 Path("icons") / "txttovoice.ico"
             ]
             
-            # Store icon paths for potential future use (like system tray)
+            # Set the taskbar icon using iconphoto (this affects taskbar but not title bar)
+            for icon_path in icon_paths:
+                if icon_path.exists():
+                    from PIL import Image, ImageTk
+                    # Load the icon and convert to PhotoImage
+                    icon_img = Image.open(icon_path)
+                    # Use high-quality size for taskbar (48x48 for better clarity)
+                    icon_img = icon_img.resize((48, 48), Image.Resampling.LANCZOS)
+                    self.taskbar_icon = ImageTk.PhotoImage(icon_img)
+                    
+                    # Set the taskbar icon using iconphoto
+                    self.root.iconphoto(True, self.taskbar_icon)
+                    self.logger.info(f"Taskbar icon set: {icon_path}")
+                    break
+            
+            # Store icon paths for system tray use
             self.icon_paths = icon_paths
-            self.logger.info("Icon paths stored, no window title bar icon set")
                 
         except Exception as e:
-            self.logger.error(f"Error with icon setup: {e}")
+            self.logger.error(f"Error setting taskbar icon: {e}")
+            # Fallback to iconbitmap if iconphoto fails
+            try:
+                for icon_path in icon_paths:
+                    if icon_path.exists():
+                        self.root.iconbitmap(str(icon_path))
+                        self.logger.info(f"Fallback: Set icon using iconbitmap: {icon_path}")
+                        break
+            except Exception as e2:
+                self.logger.error(f"Fallback icon setting also failed: {e2}")
         
         # Configure style
         style = ttk.Style()
@@ -167,6 +191,8 @@ class TxtToVoiceApp:
         # Load and display larger logo without text
         try:
             logo_paths = [
+                Path(__file__).parent / "icons" / "txttovoice.png",  # Prefer PNG for better quality
+                Path("icons") / "txttovoice.png",
                 Path(__file__).parent / "txttovoice.ico",
                 Path("txttovoice.ico"),
                 Path(__file__).parent / "icons" / "txttovoice.ico"
@@ -176,8 +202,8 @@ class TxtToVoiceApp:
                 if logo_path.exists():
                     from PIL import Image, ImageTk
                     logo_img = Image.open(logo_path)
-                    # Make the logo much bigger - 80x80 pixels
-                    logo_img = logo_img.resize((80, 80), Image.Resampling.LANCZOS)
+                    # Make the logo a good size - 100x100 pixels
+                    logo_img = logo_img.resize((100, 100), Image.Resampling.LANCZOS)
                     self.logo_photo = ImageTk.PhotoImage(logo_img)
                     
                     # Center the logo without text
@@ -851,8 +877,7 @@ class TxtToVoiceApp:
             for icon_path in icon_paths:
                 if icon_path.exists():
                     image = Image.open(icon_path)
-                    # Resize to appropriate tray size
-                    image = image.resize((64, 64), Image.Resampling.LANCZOS)
+                    # Use original size for better quality - system tray will scale appropriately
                     return image
         except Exception as e:
             self.logger.debug(f"Could not load tray icon: {e}")

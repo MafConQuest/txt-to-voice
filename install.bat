@@ -7,10 +7,9 @@ echo ========================================
 echo.
 
 REM Check if executable exists
-if not exist "dist\txttovoice.exe" (
+if not exist "txttovoice.exe" (
     echo [ERROR] txttovoice.exe not found!
-    echo Please make sure the executable was built first.
-    echo Run: python -m PyInstaller --onefile --windowed --icon=icons/txttovoice.ico txttovoice.py
+    echo Please make sure you downloaded the complete package.
     pause
     exit /b 1
 )
@@ -22,7 +21,7 @@ mkdir "%INSTALL_DIR%" 2>nul
 
 REM Copy executable and files
 echo 📋 Installing txttovoice...
-copy "dist\txttovoice.exe" "%INSTALL_DIR%\txttovoice.exe" >nul
+copy "txttovoice.exe" "%INSTALL_DIR%\txttovoice.exe" >nul
 if exist "README.md" copy "README.md" "%INSTALL_DIR%\" >nul
 if exist "LICENSE" copy "LICENSE" "%INSTALL_DIR%\" >nul
 

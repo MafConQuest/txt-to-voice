@@ -7,8 +7,7 @@ __pycache__/
 build/
 develop-eggs/
 downloads/
-# Allow dist/ for executable distribution
-# dist/
+dist/
 eggs/
 .eggs/
 lib/
@@ -51,3 +50,7 @@ archive/
 
 # Temporary files
 temp_repo/
+
+# Build artifacts
+*.spec
+txttovoice_old.ico
