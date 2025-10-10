@@ -154,7 +154,7 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) for deta
 - **Website**: [txttovoice.com](https://txttovoice.com)
 - **Support**: [txttovoice.com/support](https://txttovoice.com/support)
 - **API Keys**: [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-- **GitHub**: [github.com/yourusername/txttovoice](https://github.com/yourusername/txttovoice)
+- **GitHub**: [github.com/MafConquest/txt-to-voice](https://github.com/MafConquest/txt-to-voice)
 
 ---
 
