@@ -113,6 +113,7 @@ class TxtToVoiceApp:
         self.root.title("txttovoice - Professional Text-to-Speech")
         self.root.geometry(self.config['window_geometry'])
         self.root.minsize(500, 400)
+        self.root.configure(bg='white')  # Set consistent white background
         
         # Set window attributes for better Windows integration
         try:
@@ -126,11 +127,11 @@ class TxtToVoiceApp:
         
         # Set taskbar icon but keep title bar clean
         try:
-            # Prefer PNG for better quality, fallback to ICO
+            # Use high-quality PNG and ICO files
             icon_paths = [
-                Path(__file__).parent / "icons" / "txttovoice.png",  # High-quality PNG first
+                Path(__file__).parent / "icons" / "txttovoice.png",    # High-quality PNG
                 Path("icons") / "txttovoice.png",
-                Path(__file__).parent / "txttovoice.ico",           # New high-quality ICO
+                Path(__file__).parent / "txttovoice.ico",             # High-quality ICO
                 Path("txttovoice.ico"),
                 Path(__file__).parent / "icons" / "txttovoice.ico",
                 Path("icons") / "txttovoice.ico"
@@ -166,12 +167,72 @@ class TxtToVoiceApp:
             except Exception as e2:
                 self.logger.error(f"Fallback icon setting also failed: {e2}")
         
-        # Configure style
+        # Configure style with modern colors inspired by the logo
         style = ttk.Style()
         style.theme_use('clam')
         
-        # Main frame
-        main_frame = ttk.Frame(self.root, padding="15")
+        # Define colors from the new logo
+        lime_green = '#9ACD32'  # Vibrant lime green from logo
+        teal_green = '#20B2AA'  # Teal green from logo
+        dark_bg = '#2B2B2B'     # Dark background
+        light_bg = '#F0F0F0'    # Light background
+        
+        # Configure modern button styles
+        style.configure('Accent.TButton', 
+                       background=lime_green,
+                       foreground='white',
+                       borderwidth=0,
+                       focuscolor='none')
+        style.map('Accent.TButton',
+                 background=[('active', teal_green),
+                           ('pressed', '#7BA428')])
+        
+        style.configure('Secondary.TButton',
+                       background=teal_green,
+                       foreground='white',
+                       borderwidth=0,
+                       focuscolor='none')
+        style.map('Secondary.TButton',
+                 background=[('active', lime_green),
+                           ('pressed', '#1A9B94')])
+        
+        # Configure frame styles - remove borders and backgrounds
+        style.configure('Header.TFrame', 
+                       background='white',
+                       relief='flat',
+                       borderwidth=0)
+        style.configure('Main.TFrame', 
+                       background='white',
+                       relief='flat',
+                       borderwidth=0)
+        style.configure('Controls.TFrame',
+                       background='white',
+                       relief='flat',
+                       borderwidth=0)
+        
+        # Configure combobox styling to reduce borders
+        style.configure('TCombobox',
+                       fieldbackground='white',
+                       background='white',
+                       borderwidth=1,
+                       relief='solid')
+        style.map('TCombobox',
+                 fieldbackground=[('readonly', 'white')],
+                 selectbackground=[('readonly', lime_green)])
+        
+        # Configure label styling for clean appearance
+        style.configure('TLabel',
+                       background='white',
+                       foreground='black')
+        
+        # Configure button frame styling to remove borders
+        style.configure('Buttons.TFrame',
+                       background='white',
+                       relief='flat',
+                       borderwidth=0)
+        
+        # Main frame with modern styling
+        main_frame = ttk.Frame(self.root, padding="15", style='Main.TFrame')
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Configure grid weights
@@ -180,18 +241,18 @@ class TxtToVoiceApp:
         main_frame.columnconfigure(1, weight=1)
         main_frame.rowconfigure(2, weight=1)
         
-        # Header with logo and website
-        header_frame = ttk.Frame(main_frame)
+        # Header with logo and website - clean styling without borders
+        header_frame = ttk.Frame(main_frame, style='Header.TFrame')
         header_frame.grid(row=0, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 15))
         
-        # Left side - Logo and title
-        left_header = ttk.Frame(header_frame)
+        # Left side - Logo and title - clean frame
+        left_header = ttk.Frame(header_frame, style='Header.TFrame')
         left_header.pack(side=tk.LEFT)
         
         # Load and display larger logo without text
         try:
             logo_paths = [
-                Path(__file__).parent / "icons" / "txttovoice.png",  # Prefer PNG for better quality
+                Path(__file__).parent / "icons" / "txttovoice.png",    # High-quality PNG
                 Path("icons") / "txttovoice.png",
                 Path(__file__).parent / "txttovoice.ico",
                 Path("txttovoice.ico"),
@@ -217,8 +278,8 @@ class TxtToVoiceApp:
                                    font=('Arial', 18, 'bold'))
             title_label.pack(side=tk.LEFT)
         
-        # Right side - Clickable website link
-        right_header = ttk.Frame(header_frame)
+        # Right side - Clickable website link - clean frame
+        right_header = ttk.Frame(header_frame, style='Header.TFrame')
         right_header.pack(side=tk.RIGHT)
         
         def open_website():
@@ -226,16 +287,16 @@ class TxtToVoiceApp:
             webbrowser.open("https://txttovoice.com")
         
         website_label = ttk.Label(right_header, text="🌐 txttovoice.com", 
-                                 font=('Arial', 10), foreground='blue',
+                                 font=('Arial', 10, 'bold'), foreground='#20B2AA',
                                  cursor='hand2')
         website_label.pack(side=tk.RIGHT)
         website_label.bind("<Button-1>", lambda e: open_website())
         
-        # Add tooltip-like effect
+        # Add tooltip-like effect with logo colors
         def on_enter(e):
-            website_label.configure(foreground='darkblue')
+            website_label.configure(foreground='#9ACD32')
         def on_leave(e):
-            website_label.configure(foreground='blue')
+            website_label.configure(foreground='#20B2AA')
         
         website_label.bind("<Enter>", on_enter)
         website_label.bind("<Leave>", on_leave)
@@ -255,8 +316,8 @@ class TxtToVoiceApp:
         self.text_input.bind('<FocusIn>', self.on_text_focus_in)
         self.text_input.bind('<FocusOut>', self.on_text_focus_out)
         
-        # Controls frame
-        controls_frame = ttk.Frame(main_frame)
+        # Controls frame - clean styling without borders
+        controls_frame = ttk.Frame(main_frame, style='Controls.TFrame')
         controls_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
         
         # Voice and speed
@@ -278,19 +339,22 @@ class TxtToVoiceApp:
         speed_combo.grid(row=0, column=3, sticky=tk.W)
         speed_combo.bind('<<ComboboxSelected>>', self.on_speed_changed)
         
-        # Buttons
-        button_frame = ttk.Frame(main_frame)
+        # Buttons - clean frame without borders
+        button_frame = ttk.Frame(main_frame, style='Buttons.TFrame')
         button_frame.grid(row=4, column=0, columnspan=3, pady=(10, 0))
         
         self.speak_button = ttk.Button(button_frame, text="🎤 Speak", 
-                                      command=self.speak_text, width=12)
+                                      command=self.speak_text, width=12,
+                                      style='Accent.TButton')
         self.speak_button.pack(side=tk.LEFT, padx=(0, 5))
         
         ttk.Button(button_frame, text="⚙️ Settings", 
-                  command=self.show_settings, width=12).pack(side=tk.LEFT, padx=5)
+                  command=self.show_settings, width=12,
+                  style='Secondary.TButton').pack(side=tk.LEFT, padx=5)
         
         ttk.Button(button_frame, text="📚 History", 
-                  command=self.show_history, width=12).pack(side=tk.LEFT, padx=5)
+                  command=self.show_history, width=12,
+                  style='Secondary.TButton').pack(side=tk.LEFT, padx=5)
         
         ttk.Button(button_frame, text="📌 Minimize", 
                   command=self.minimize_to_tray, width=12).pack(side=tk.LEFT, padx=5)
@@ -298,10 +362,10 @@ class TxtToVoiceApp:
         ttk.Button(button_frame, text="❌ Exit", 
                   command=self.quit_app, width=8).pack(side=tk.LEFT, padx=5)
         
-        # Status bar
+        # Status bar with logo colors
         self.status_var = tk.StringVar(value="Ready - Hotkey: Ctrl+Shift+J")
         status_label = ttk.Label(main_frame, textvariable=self.status_var, 
-                               font=('Arial', 9), foreground='green')
+                               font=('Arial', 9, 'bold'), foreground='#20B2AA')
         status_label.grid(row=5, column=0, columnspan=3, pady=(15, 0))
         
         # Window close handler
@@ -401,10 +465,10 @@ class TxtToVoiceApp:
                     history_window.destroy()
         
         ttk.Button(button_frame, text="🔊 Replay Selected", 
-                  command=replay_selected).pack(side=tk.LEFT, padx=(0, 10))
+                  command=replay_selected, style='Accent.TButton').pack(side=tk.LEFT, padx=(0, 10))
         
         ttk.Button(button_frame, text="📝 Use Text", 
-                  command=use_text).pack(side=tk.LEFT, padx=(0, 10))
+                  command=use_text, style='Secondary.TButton').pack(side=tk.LEFT, padx=(0, 10))
         
         ttk.Button(button_frame, text="❌ Close", 
                   command=history_window.destroy).pack(side=tk.RIGHT)

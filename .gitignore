@@ -54,3 +54,7 @@ temp_repo/
 # Build artifacts
 *.spec
 txttovoice_old.ico
+create_*_ico.py
+
+# Temporary files
+icons/txt-to-voice.png
