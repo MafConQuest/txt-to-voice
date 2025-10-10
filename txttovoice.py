@@ -112,15 +112,35 @@ class TxtToVoiceApp:
         self.root = tk.Tk()
         self.root.title("txttovoice - Professional Text-to-Speech")
         self.root.geometry(self.config['window_geometry'])
-        self.root.minsize(450, 350)
+        self.root.minsize(500, 400)
         
-        # Set icon
+        # Set window attributes for better Windows integration
         try:
-            icon_path = Path(__file__).parent / "icons" / "txttovoice.ico"
-            if icon_path.exists():
-                self.root.iconbitmap(str(icon_path))
+            # This helps with taskbar grouping on Windows
+            self.root.wm_attributes('-toolwindow', False)
         except Exception:
             pass
+        
+        # Initialize history
+        self.history = []
+        
+        # Don't set any window icon to remove it from title bar completely
+        # This will show only the default Windows icon in title bar
+        try:
+            # We can still try to set taskbar icon without affecting title bar
+            icon_paths = [
+                Path(__file__).parent / "txttovoice.ico",
+                Path("txttovoice.ico"),
+                Path(__file__).parent / "icons" / "txttovoice.ico",
+                Path("icons") / "txttovoice.ico"
+            ]
+            
+            # Store icon paths for potential future use (like system tray)
+            self.icon_paths = icon_paths
+            self.logger.info("Icon paths stored, no window title bar icon set")
+                
+        except Exception as e:
+            self.logger.error(f"Error with icon setup: {e}")
         
         # Configure style
         style = ttk.Style()
@@ -136,17 +156,63 @@ class TxtToVoiceApp:
         main_frame.columnconfigure(1, weight=1)
         main_frame.rowconfigure(2, weight=1)
         
-        # Header
+        # Header with logo and website
         header_frame = ttk.Frame(main_frame)
         header_frame.grid(row=0, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 15))
         
-        title_label = ttk.Label(header_frame, text="🎤 txttovoice", 
-                               font=('Arial', 18, 'bold'))
-        title_label.pack(side=tk.LEFT)
+        # Left side - Logo and title
+        left_header = ttk.Frame(header_frame)
+        left_header.pack(side=tk.LEFT)
         
-        website_label = ttk.Label(header_frame, text="txttovoice.com", 
-                                 font=('Arial', 10), foreground='blue')
+        # Load and display larger logo without text
+        try:
+            logo_paths = [
+                Path(__file__).parent / "txttovoice.ico",
+                Path("txttovoice.ico"),
+                Path(__file__).parent / "icons" / "txttovoice.ico"
+            ]
+            
+            for logo_path in logo_paths:
+                if logo_path.exists():
+                    from PIL import Image, ImageTk
+                    logo_img = Image.open(logo_path)
+                    # Make the logo much bigger - 80x80 pixels
+                    logo_img = logo_img.resize((80, 80), Image.Resampling.LANCZOS)
+                    self.logo_photo = ImageTk.PhotoImage(logo_img)
+                    
+                    # Center the logo without text
+                    logo_label = ttk.Label(left_header, image=self.logo_photo)
+                    logo_label.pack(side=tk.LEFT)
+                    break
+        except Exception as e:
+            self.logger.debug(f"Could not load logo: {e}")
+            # Fallback: show text only if logo fails
+            title_label = ttk.Label(left_header, text="txttovoice", 
+                                   font=('Arial', 18, 'bold'))
+            title_label.pack(side=tk.LEFT)
+        
+        # Right side - Clickable website link
+        right_header = ttk.Frame(header_frame)
+        right_header.pack(side=tk.RIGHT)
+        
+        def open_website():
+            import webbrowser
+            webbrowser.open("https://txttovoice.com")
+        
+        website_label = ttk.Label(right_header, text="🌐 txttovoice.com", 
+                                 font=('Arial', 10), foreground='blue',
+                                 cursor='hand2')
         website_label.pack(side=tk.RIGHT)
+        website_label.bind("<Button-1>", lambda e: open_website())
+        
+        # Add tooltip-like effect
+        def on_enter(e):
+            website_label.configure(foreground='darkblue')
+        def on_leave(e):
+            website_label.configure(foreground='blue')
+        
+        website_label.bind("<Enter>", on_enter)
+        website_label.bind("<Leave>", on_leave)
         
         # Text input
         text_label = ttk.Label(main_frame, text="Text to convert:")
@@ -197,6 +263,9 @@ class TxtToVoiceApp:
         ttk.Button(button_frame, text="⚙️ Settings", 
                   command=self.show_settings, width=12).pack(side=tk.LEFT, padx=5)
         
+        ttk.Button(button_frame, text="📚 History", 
+                  command=self.show_history, width=12).pack(side=tk.LEFT, padx=5)
+        
         ttk.Button(button_frame, text="📌 Minimize", 
                   command=self.minimize_to_tray, width=12).pack(side=tk.LEFT, padx=5)
         
@@ -214,6 +283,112 @@ class TxtToVoiceApp:
         
         # Save geometry on configure
         self.root.bind('<Configure>', self.on_window_configure)
+    
+    def show_history(self):
+        """Show history window."""
+        history_window = tk.Toplevel(self.root)
+        history_window.title("txttovoice History")
+        history_window.geometry("600x400")
+        history_window.transient(self.root)
+        
+        # Center the window
+        history_window.update_idletasks()
+        x = (history_window.winfo_screenwidth() // 2) - (600 // 2)
+        y = (history_window.winfo_screenheight() // 2) - (400 // 2)
+        history_window.geometry(f"600x400+{x}+{y}")
+        
+        # Main frame
+        main_frame = ttk.Frame(history_window, padding="15")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Header
+        header_frame = ttk.Frame(main_frame)
+        header_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        ttk.Label(header_frame, text="📚 Conversion History", 
+                 font=('Arial', 14, 'bold')).pack(side=tk.LEFT)
+        
+        ttk.Button(header_frame, text="🗑️ Clear All", 
+                  command=lambda: self.clear_history_and_refresh(history_tree)).pack(side=tk.RIGHT)
+        
+        # History list
+        list_frame = ttk.Frame(main_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        
+        # Create treeview
+        columns = ('Time', 'Text', 'Voice', 'Speed')
+        history_tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=12)
+        
+        # Configure columns
+        history_tree.heading('Time', text='Time')
+        history_tree.heading('Text', text='Text Preview')
+        history_tree.heading('Voice', text='Voice')
+        history_tree.heading('Speed', text='Speed')
+        
+        history_tree.column('Time', width=80)
+        history_tree.column('Text', width=300)
+        history_tree.column('Voice', width=80)
+        history_tree.column('Speed', width=60)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=history_tree.yview)
+        history_tree.configure(yscrollcommand=scrollbar.set)
+        
+        history_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Populate history
+        for item in self.history:
+            history_tree.insert('', 'end', values=(
+                item['time'],
+                item['text_preview'],
+                item['voice'],
+                f"{item['speed']}x"
+            ))
+        
+        # Buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X)
+        
+        def replay_selected():
+            selection = history_tree.selection()
+            if selection:
+                item_index = history_tree.index(selection[0])
+                if item_index < len(self.history):
+                    history_item = self.history[item_index]
+                    self.voice_var.set(history_item['voice'])
+                    self.speed_var.set(str(history_item['speed']))
+                    self.config['voice'] = history_item['voice']
+                    self.config['speed'] = history_item['speed']
+                    threading.Thread(target=self.convert_and_play_text, 
+                                   args=(history_item['text'],), daemon=True).start()
+                    history_window.destroy()
+        
+        def use_text():
+            selection = history_tree.selection()
+            if selection:
+                item_index = history_tree.index(selection[0])
+                if item_index < len(self.history):
+                    history_item = self.history[item_index]
+                    self.text_input.delete('1.0', tk.END)
+                    self.text_input.insert('1.0', history_item['text'])
+                    history_window.destroy()
+        
+        ttk.Button(button_frame, text="🔊 Replay Selected", 
+                  command=replay_selected).pack(side=tk.LEFT, padx=(0, 10))
+        
+        ttk.Button(button_frame, text="📝 Use Text", 
+                  command=use_text).pack(side=tk.LEFT, padx=(0, 10))
+        
+        ttk.Button(button_frame, text="❌ Close", 
+                  command=history_window.destroy).pack(side=tk.RIGHT)
+    
+    def clear_history_and_refresh(self, tree):
+        """Clear history and refresh the tree view."""
+        self.history = []
+        for item in tree.get_children():
+            tree.delete(item)
+        self.update_status("History cleared")
     
     def on_text_focus_in(self, event):
         """Handle text input focus in."""
@@ -421,6 +596,10 @@ class TxtToVoiceApp:
             if audio_data:
                 self.update_status("Playing audio...")
                 self.play_audio(audio_data)
+                
+                # Add to history
+                self.add_to_history(text, self.config['voice'], self.config['speed'])
+                
                 self.update_status("Ready")
             else:
                 self.update_status("Failed to convert text")
@@ -431,17 +610,21 @@ class TxtToVoiceApp:
     
     def call_openai_tts(self, text: str, voice: str, speed: float) -> Optional[bytes]:
         """Call OpenAI TTS API."""
+        return self.call_openai_tts_with_config(text, self.config)
+    
+    def call_openai_tts_with_config(self, text: str, config: dict) -> Optional[bytes]:
+        """Call OpenAI TTS API with specific config."""
         try:
             url = "https://api.openai.com/v1/audio/speech"
             headers = {
-                "Authorization": f"Bearer {self.config['openai_api_key']}",
+                "Authorization": f"Bearer {config['openai_api_key']}",
                 "Content-Type": "application/json"
             }
             data = {
                 "model": "tts-1",
                 "input": text,
-                "voice": voice,
-                "speed": speed,
+                "voice": config['voice'],
+                "speed": config['speed'],
                 "response_format": "mp3"
             }
             
@@ -483,81 +666,196 @@ class TxtToVoiceApp:
         """Show settings dialog."""
         settings_window = tk.Toplevel(self.root)
         settings_window.title("txttovoice Settings")
-        settings_window.geometry("450x250")
-        settings_window.resizable(False, False)
+        settings_window.geometry("600x750")
+        settings_window.minsize(580, 750)
+        settings_window.resizable(True, True)
         settings_window.transient(self.root)
         settings_window.grab_set()
         
         # Center the window
-        settings_window.geometry("+%d+%d" % (
-            self.root.winfo_rootx() + 50,
-            self.root.winfo_rooty() + 50
-        ))
+        settings_window.update_idletasks()
+        x = (settings_window.winfo_screenwidth() // 2) - (600 // 2)
+        y = (settings_window.winfo_screenheight() // 2) - (500 // 2)
+        settings_window.geometry(f"600x500+{x}+{y}")
         
-        frame = ttk.Frame(settings_window, padding="20")
-        frame.pack(fill=tk.BOTH, expand=True)
+        # Main frame with scrollable content
+        main_frame = ttk.Frame(settings_window)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Configure grid weights for proper resizing
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(7, weight=1)  # Make the space above buttons expandable
         
         # Header
-        ttk.Label(frame, text="⚙️ txttovoice Settings", 
-                 font=('Arial', 14, 'bold')).grid(row=0, column=0, columnspan=2, pady=(0, 20))
+        header_label = ttk.Label(main_frame, text="⚙️ txttovoice Settings", 
+                                font=('Arial', 16, 'bold'))
+        header_label.grid(row=0, column=0, columnspan=2, pady=(0, 25), sticky=tk.W)
         
-        # API Key
-        ttk.Label(frame, text="OpenAI API Key:").grid(row=1, column=0, sticky=tk.W, pady=(0, 5))
+        # API Key Section
+        api_section = ttk.LabelFrame(main_frame, text="OpenAI Configuration", padding="15")
+        api_section.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 15))
+        api_section.columnconfigure(0, weight=1)
+        
+        ttk.Label(api_section, text="API Key:", font=('Arial', 10, 'bold')).grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
+        
         api_key_var = tk.StringVar(value=self.config['openai_api_key'])
-        api_key_entry = ttk.Entry(frame, textvariable=api_key_var, width=50, show="*")
-        api_key_entry.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 15))
+        api_key_entry = ttk.Entry(api_section, textvariable=api_key_var, show="*", width=50)
+        api_key_entry.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         
         # Get API Key link
         def open_api_link():
             import webbrowser
             webbrowser.open("https://platform.openai.com/api-keys")
         
-        link_button = ttk.Button(frame, text="🔗 Get API Key", command=open_api_link)
-        link_button.grid(row=3, column=0, sticky=tk.W, pady=(0, 15))
+        link_frame = ttk.Frame(api_section)
+        link_frame.grid(row=2, column=0, sticky=tk.W)
         
-        # Hotkey
-        ttk.Label(frame, text="Global Hotkey:").grid(row=4, column=0, sticky=tk.W, pady=(0, 5))
+        ttk.Label(link_frame, text="Don't have an API key?").pack(side=tk.LEFT)
+        link_button = ttk.Button(link_frame, text="Get one here", command=open_api_link)
+        link_button.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Hotkey Section
+        hotkey_section = ttk.LabelFrame(main_frame, text="Hotkey Configuration", padding="15")
+        hotkey_section.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 15))
+        hotkey_section.columnconfigure(0, weight=1)
+        
+        ttk.Label(hotkey_section, text="Global Hotkey:", font=('Arial', 10, 'bold')).grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
+        
         hotkey_var = tk.StringVar(value=self.config['hotkey'])
-        hotkey_entry = ttk.Entry(frame, textvariable=hotkey_var, width=20)
-        hotkey_entry.grid(row=5, column=0, sticky=tk.W, pady=(0, 15))
+        hotkey_entry = ttk.Entry(hotkey_section, textvariable=hotkey_var, width=25)
+        hotkey_entry.grid(row=1, column=0, sticky=tk.W, pady=(0, 5))
         
-        # Buttons
-        button_frame = ttk.Frame(frame)
-        button_frame.grid(row=6, column=0, columnspan=2, pady=(15, 0))
+        ttk.Label(hotkey_section, text="Example: ctrl+shift+j", 
+                 font=('Arial', 9), foreground='gray').grid(row=2, column=0, sticky=tk.W)
+        
+        # Voice Settings Section
+        voice_section = ttk.LabelFrame(main_frame, text="Voice Settings", padding="15")
+        voice_section.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 20))
+        voice_section.columnconfigure(1, weight=1)
+        
+        ttk.Label(voice_section, text="Default Voice:", font=('Arial', 10, 'bold')).grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        
+        voice_var = tk.StringVar(value=self.config['voice'])
+        voice_combo = ttk.Combobox(voice_section, textvariable=voice_var,
+                                  values=['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'],
+                                  state='readonly', width=15)
+        voice_combo.grid(row=0, column=1, sticky=tk.W, pady=(0, 10))
+        
+        ttk.Label(voice_section, text="Default Speed:", font=('Arial', 10, 'bold')).grid(row=1, column=0, sticky=tk.W, padx=(0, 10))
+        
+        speed_var = tk.StringVar(value=str(self.config['speed']))
+        speed_combo = ttk.Combobox(voice_section, textvariable=speed_var,
+                                  values=['0.5', '0.75', '1.0', '1.25', '1.5', '2.0'],
+                                  state='readonly', width=15)
+        speed_combo.grid(row=1, column=1, sticky=tk.W)
+        
+        # Spacer to push buttons to bottom
+        spacer = ttk.Frame(main_frame)
+        spacer.grid(row=7, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Buttons at bottom
+        button_frame = ttk.Frame(main_frame)
+        button_frame.grid(row=8, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(20, 0))
         
         def save_settings():
-            self.config['openai_api_key'] = api_key_var.get()
-            old_hotkey = self.config['hotkey']
-            self.config['hotkey'] = hotkey_var.get()
-            self.save_config()
-            
-            # Restart hotkey listener if changed
-            if old_hotkey != self.config['hotkey']:
-                if self.hotkey_listener:
-                    self.hotkey_listener.stop()
-                self.start_hotkey_listener()
-            
-            settings_window.destroy()
-            self.update_status("Settings saved")
+            try:
+                # Validate API key
+                api_key = api_key_var.get().strip()
+                if api_key and not api_key.startswith('sk-'):
+                    messagebox.showwarning("Invalid API Key", 
+                                         "OpenAI API keys should start with 'sk-'")
+                    return
+                
+                # Save settings
+                self.config['openai_api_key'] = api_key
+                self.config['voice'] = voice_var.get()
+                self.config['speed'] = float(speed_var.get())
+                
+                old_hotkey = self.config['hotkey']
+                self.config['hotkey'] = hotkey_var.get().strip()
+                
+                self.save_config()
+                
+                # Restart hotkey listener if changed
+                if old_hotkey != self.config['hotkey']:
+                    if self.hotkey_listener:
+                        self.hotkey_listener.stop()
+                    self.start_hotkey_listener()
+                
+                settings_window.destroy()
+                self.update_status("Settings saved successfully")
+                messagebox.showinfo("Settings Saved", "Your settings have been saved successfully!")
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save settings: {e}")
         
-        ttk.Button(button_frame, text="💾 Save", command=save_settings).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(button_frame, text="❌ Cancel", command=settings_window.destroy).pack(side=tk.LEFT)
+        def test_settings():
+            """Test the current settings"""
+            if not api_key_var.get().strip():
+                messagebox.showwarning("No API Key", "Please enter your OpenAI API key first.")
+                return
+            
+            test_text = "This is a test of your txttovoice settings."
+            self.update_status("Testing settings...")
+            
+            def run_test():
+                try:
+                    # Temporarily use the dialog settings
+                    temp_config = self.config.copy()
+                    temp_config['openai_api_key'] = api_key_var.get().strip()
+                    temp_config['voice'] = voice_var.get()
+                    temp_config['speed'] = float(speed_var.get())
+                    
+                    # Test API call
+                    audio_data = self.call_openai_tts_with_config(test_text, temp_config)
+                    if audio_data:
+                        self.play_audio(audio_data)
+                        self.update_status("Settings test successful!")
+                        messagebox.showinfo("Test Successful", "Your settings are working correctly!")
+                    else:
+                        self.update_status("Settings test failed")
+                        messagebox.showerror("Test Failed", "Could not connect with these settings. Please check your API key.")
+                except Exception as e:
+                    self.update_status("Settings test failed")
+                    messagebox.showerror("Test Failed", f"Settings test failed: {e}")
+            
+            threading.Thread(target=run_test, daemon=True).start()
         
-        # Focus on API key field
-        api_key_entry.focus()
+        # Button layout
+        ttk.Button(button_frame, text="🧪 Test Settings", 
+                  command=test_settings).pack(side=tk.LEFT, padx=(0, 10))
+        
+        ttk.Button(button_frame, text="💾 Save Settings", 
+                  command=save_settings).pack(side=tk.LEFT, padx=(0, 10))
+        
+        ttk.Button(button_frame, text="❌ Cancel", 
+                  command=settings_window.destroy).pack(side=tk.LEFT)
+        
+        # Focus on API key field if empty, otherwise on save button
+        if not self.config['openai_api_key']:
+            api_key_entry.focus()
+        else:
+            button_frame.children['!button2'].focus()  # Save button
     
     def create_tray_icon(self):
         """Create system tray icon."""
         try:
-            # Try to load the txttovoice icon
-            icon_path = Path(__file__).parent / "icons" / "txttovoice.png"
-            if icon_path.exists():
-                image = Image.open(icon_path)
-                # Resize to appropriate tray size
-                image = image.resize((64, 64), Image.Resampling.LANCZOS)
-                return image
-        except Exception:
-            pass
+            # Try to load your custom txttovoice icon
+            icon_paths = [
+                Path(__file__).parent / "txttovoice.ico",
+                Path("txttovoice.ico"),
+                Path(__file__).parent / "icons" / "txttovoice.png",
+                Path("icons") / "txttovoice.png"
+            ]
+            
+            for icon_path in icon_paths:
+                if icon_path.exists():
+                    image = Image.open(icon_path)
+                    # Resize to appropriate tray size
+                    image = image.resize((64, 64), Image.Resampling.LANCZOS)
+                    return image
+        except Exception as e:
+            self.logger.debug(f"Could not load tray icon: {e}")
         
         # Create a simple fallback icon
         image = Image.new('RGB', (64, 64), color='blue')
@@ -608,6 +906,40 @@ class TxtToVoiceApp:
         """Open txttovoice.com website."""
         import webbrowser
         webbrowser.open("https://txttovoice.com")
+    
+    def add_to_history(self, text: str, voice: str, speed: float):
+        """Add conversion to history."""
+        from datetime import datetime
+        
+        # Limit text preview
+        text_preview = text[:50] + "..." if len(text) > 50 else text
+        
+        history_item = {
+            'time': datetime.now().strftime("%H:%M:%S"),
+            'text': text,
+            'text_preview': text_preview,
+            'voice': voice,
+            'speed': speed
+        }
+        
+        # Add to beginning of history
+        self.history.insert(0, history_item)
+        
+        # Limit history size
+        if len(self.history) > 20:
+            self.history = self.history[:20]
+        
+        # History updated (display will refresh when history window is opened)
+    
+
+    
+    def clear_history(self):
+        """Clear all history."""
+        self.history = []
+        self.refresh_history_display()
+        self.update_status("History cleared")
+    
+
     
     def quit_app(self, icon=None, item=None):
         """Quit the application."""
