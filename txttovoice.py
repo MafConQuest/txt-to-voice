@@ -45,6 +45,10 @@ class TxtToVoiceApp:
         self.hotkey_listener = None
         self.tray_icon = None
         self.current_audio_data = None
+        self.is_processing = False  # Flag to prevent multiple API calls
+        self.last_api_call_time = 0  # Timestamp of last API call for rate limiting
+        self.api_call_cooldown = 5.0  # 5 second cooldown between API calls
+        self.is_audio_playing = False  # Track if audio is currently playing
         
         # Create UI
         self.setup_ui()
@@ -106,6 +110,16 @@ class TxtToVoiceApp:
             self.logger.info("Audio system initialized")
         except Exception as e:
             self.logger.error(f"Error initializing audio: {e}")
+    
+    def stop_current_audio(self):
+        """Stop any currently playing audio."""
+        try:
+            if pygame.mixer.music.get_busy():
+                pygame.mixer.music.stop()
+                self.is_audio_playing = False
+                self.logger.info("Stopped current audio playback")
+        except Exception as e:
+            self.logger.error(f"Error stopping audio: {e}")
     
     def setup_ui(self):
         """Create the main UI."""
@@ -441,6 +455,19 @@ class TxtToVoiceApp:
         button_frame.pack(fill=tk.X)
         
         def replay_selected():
+            # Check if already processing
+            if self.is_processing:
+                self.update_status("Please wait - already processing...")
+                return
+            
+            # Check API call cooldown
+            current_time = time.time()
+            time_since_last_call = current_time - self.last_api_call_time
+            if time_since_last_call < self.api_call_cooldown:
+                remaining_time = self.api_call_cooldown - time_since_last_call
+                self.update_status(f"Please wait {remaining_time:.1f} seconds before next conversion")
+                return
+                
             selection = history_tree.selection()
             if selection:
                 item_index = history_tree.index(selection[0])
@@ -450,6 +477,10 @@ class TxtToVoiceApp:
                     self.speed_var.set(str(history_item['speed']))
                     self.config['voice'] = history_item['voice']
                     self.config['speed'] = history_item['speed']
+                    
+                    # Stop any currently playing audio
+                    self.stop_current_audio()
+                    
                     threading.Thread(target=self.convert_and_play_text, 
                                    args=(history_item['text'],), daemon=True).start()
                     history_window.destroy()
@@ -549,6 +580,19 @@ class TxtToVoiceApp:
     def handle_hotkey(self):
         """Handle global hotkey press."""
         try:
+            # Check if already processing
+            if self.is_processing:
+                self.update_status("Please wait - already processing...")
+                return
+            
+            # Check API call cooldown
+            current_time = time.time()
+            time_since_last_call = current_time - self.last_api_call_time
+            if time_since_last_call < self.api_call_cooldown:
+                remaining_time = self.api_call_cooldown - time_since_last_call
+                self.update_status(f"Please wait {remaining_time:.1f} seconds before next conversion")
+                return
+                
             self.logger.info("Hotkey pressed - capturing selected text")
             self.update_status("Capturing selected text...")
             
@@ -557,6 +601,10 @@ class TxtToVoiceApp:
             if text and text.strip():
                 self.logger.info(f"Captured text ({len(text)} chars): {text[:50]}...")
                 self.update_status("Converting selected text...")
+                
+                # Stop any currently playing audio
+                self.stop_current_audio()
+                
                 self.convert_and_play_text(text)
             else:
                 self.logger.warning("No text captured")
@@ -660,6 +708,19 @@ class TxtToVoiceApp:
     
     def speak_text(self):
         """Speak the text in the input field."""
+        # Check if already processing
+        if self.is_processing:
+            self.update_status("Please wait - already processing...")
+            return
+        
+        # Check API call cooldown
+        current_time = time.time()
+        time_since_last_call = current_time - self.last_api_call_time
+        if time_since_last_call < self.api_call_cooldown:
+            remaining_time = self.api_call_cooldown - time_since_last_call
+            self.update_status(f"Please wait {remaining_time:.1f} seconds before next conversion")
+            return
+            
         text = self.text_input.get('1.0', tk.END).strip()
         
         if text.startswith('Type text here'):
@@ -670,21 +731,35 @@ class TxtToVoiceApp:
             self.update_status("Please enter some text first")
             return
         
+        # Stop any currently playing audio
+        self.stop_current_audio()
+        
         threading.Thread(target=self.convert_and_play_text, args=(text,), daemon=True).start()
     
     def convert_and_play_text(self, text: str):
         """Convert text to speech and play it."""
         try:
+            # Set processing flag to prevent multiple API calls
+            self.is_processing = True
+            self.update_speak_button_state(False)  # Disable speak button
+            
             if not self.config['openai_api_key']:
                 self.update_status("Please set your OpenAI API key in Settings")
                 return
             
             self.update_status("Converting to speech...")
             
+            # Record API call timestamp
+            self.last_api_call_time = time.time()
+            
             audio_data = self.call_openai_tts(text, self.config['voice'], self.config['speed'])
             
             if audio_data:
                 self.update_status("Playing audio...")
+                # Clear processing flag when playback starts
+                self.is_processing = False
+                self.update_speak_button_state(True)  # Re-enable speak button
+                
                 self.play_audio(audio_data)
                 
                 # Add to history
@@ -697,6 +772,10 @@ class TxtToVoiceApp:
         except Exception as e:
             self.logger.error(f"Error converting text: {e}")
             self.update_status("Error converting text")
+        finally:
+            # Always clear processing flag and re-enable button
+            self.is_processing = False
+            self.update_speak_button_state(True)
     
     def call_openai_tts(self, text: str, voice: str, speed: float) -> Optional[bytes]:
         """Call OpenAI TTS API."""
@@ -738,16 +817,32 @@ class TxtToVoiceApp:
             pygame.mixer.music.load(audio_file)
             pygame.mixer.music.play()
             
+            self.is_audio_playing = True
+            
             while pygame.mixer.music.get_busy():
                 time.sleep(0.1)
+            
+            self.is_audio_playing = False
                 
         except Exception as e:
             self.logger.error(f"Error playing audio: {e}")
+            self.is_audio_playing = False
     
     def update_status(self, message: str):
         """Update status message."""
         def update():
             self.status_var.set(message)
+        
+        if self.root:
+            self.root.after(0, update)
+    
+    def update_speak_button_state(self, enabled: bool):
+        """Update the speak button enabled/disabled state."""
+        def update():
+            if enabled:
+                self.speak_button.configure(state='normal', text='🎤 Speak')
+            else:
+                self.speak_button.configure(state='disabled', text='⏳ Processing...')
         
         if self.root:
             self.root.after(0, update)
