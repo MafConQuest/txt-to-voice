@@ -29,6 +29,10 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import io
 from datetime import datetime
+import socket
+import tempfile
+import ctypes
+from ctypes import wintypes
 
 
 class TxtToVoiceApp:
@@ -37,6 +41,13 @@ class TxtToVoiceApp:
     def __init__(self):
         """Initialize the application."""
         self.setup_logging()
+        
+        # Check for single instance
+        if not self.check_single_instance():
+            self.logger.info("Another instance is already running. Bringing it to front.")
+            self.bring_existing_to_front()
+            sys.exit(0)
+            
         self.load_config()
         self.setup_audio()
         
@@ -49,6 +60,7 @@ class TxtToVoiceApp:
         self.last_api_call_time = 0  # Timestamp of last API call for rate limiting
         self.api_call_cooldown = 5.0  # 5 second cooldown between API calls
         self.is_audio_playing = False  # Track if audio is currently playing
+        self.mutex_handle = None  # Handle for single instance mutex
         
         # Create UI
         self.setup_ui()
@@ -71,6 +83,136 @@ class TxtToVoiceApp:
             ]
         )
         self.logger = logging.getLogger(__name__)
+    
+    def check_single_instance(self):
+        """Check if another instance is already running using Windows mutex."""
+        try:
+            # Use Windows mutex for single instance check
+            kernel32 = ctypes.windll.kernel32
+            mutex_name = "Global\\txttovoice_single_instance_mutex_v3"
+            
+            self.logger.info(f"Checking single instance with mutex: {mutex_name}")
+            
+            # First, try to open existing mutex
+            MUTEX_ALL_ACCESS = 0x1F0001
+            existing_mutex = kernel32.OpenMutexW(MUTEX_ALL_ACCESS, False, mutex_name)
+            
+            if existing_mutex:
+                self.logger.info("Found existing mutex - another instance is running")
+                kernel32.CloseHandle(existing_mutex)
+                return False
+            
+            # No existing mutex found, create new one
+            self.mutex_handle = kernel32.CreateMutexW(None, True, mutex_name)
+            
+            if not self.mutex_handle:
+                self.logger.error("Failed to create mutex")
+                return True  # Allow to run if mutex creation fails
+            
+            # Double-check with GetLastError
+            last_error = kernel32.GetLastError()
+            self.logger.info(f"Mutex creation result - Last error: {last_error}")
+            
+            if last_error == 183:  # ERROR_ALREADY_EXISTS
+                self.logger.info("Another instance detected via ERROR_ALREADY_EXISTS")
+                kernel32.CloseHandle(self.mutex_handle)
+                return False
+            
+            self.logger.info("Single instance check passed - we are the first instance")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error checking single instance: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return True  # Allow to run if check fails
+    
+    def bring_existing_to_front(self):
+        """Attempt to bring existing instance to front."""
+        try:
+            # Clean up our mutex handle first
+            if hasattr(self, 'mutex_handle') and self.mutex_handle:
+                kernel32 = ctypes.windll.kernel32
+                kernel32.CloseHandle(self.mutex_handle)
+                self.logger.info("Closed duplicate instance mutex handle")
+            
+            # Use Windows API to find and restore the window
+            user32 = ctypes.windll.user32
+            
+            # Find window by exact title first
+            hwnd = user32.FindWindowW(None, "txttovoice - Professional Text-to-Speech")
+            
+            if hwnd:
+                # Window found, bring it to front
+                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                user32.SetForegroundWindow(hwnd)
+                self.logger.info("Brought existing instance to front by exact title")
+                return
+            
+            # If not found by exact title, try to find any txttovoice window
+            found_window = False
+            
+            def enum_windows_proc(hwnd, lParam):
+                nonlocal found_window
+                if user32.IsWindowVisible(hwnd):
+                    length = user32.GetWindowTextLengthW(hwnd)
+                    if length > 0:
+                        buffer = ctypes.create_unicode_buffer(length + 1)
+                        user32.GetWindowTextW(hwnd, buffer, length + 1)
+                        window_title = buffer.value
+                        if 'txttovoice' in window_title.lower():
+                            # Found txttovoice window, restore and bring to front
+                            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                            user32.SetForegroundWindow(hwnd)
+                            found_window = True
+                            self.logger.info(f"Brought existing instance to front: {window_title}")
+                            return False  # Stop enumeration
+                return True  # Continue enumeration
+            
+            # Define the callback function type
+            EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+            enum_proc = EnumWindowsProc(enum_windows_proc)
+            
+            # Enumerate all windows
+            user32.EnumWindows(enum_proc, 0)
+            
+            if not found_window:
+                self.logger.warning("Could not find existing txttovoice window")
+                # Show message that app is running
+                self.show_already_running_message()
+            
+        except Exception as e:
+            self.logger.error(f"Error bringing existing instance to front: {e}")
+            self.show_already_running_message()
+    
+    def show_already_running_message(self):
+        """Show message that app is already running."""
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showinfo("txttovoice Already Running", 
+                              "txttovoice is already running!\n\n" +
+                              "• Check your system tray (bottom-right corner)\n" +
+                              "• Look for the txttovoice icon in your taskbar\n" +
+                              "• The existing instance should now be visible")
+            root.destroy()
+        except Exception as e:
+            self.logger.error(f"Error showing already running message: {e}")
+    
+    def cleanup_single_instance(self):
+        """Clean up single instance resources on exit."""
+        try:
+            if hasattr(self, 'mutex_handle') and self.mutex_handle:
+                kernel32 = ctypes.windll.kernel32
+                # Only release and close when truly exiting
+                kernel32.ReleaseMutex(self.mutex_handle)
+                kernel32.CloseHandle(self.mutex_handle)
+                self.mutex_handle = None
+                self.logger.info("Released single instance mutex on exit")
+        except Exception as e:
+            self.logger.error(f"Error cleaning up single instance resources: {e}")
     
     def load_config(self):
         """Load configuration from file."""
@@ -1134,6 +1276,9 @@ class TxtToVoiceApp:
         
         if self.tray_icon:
             self.tray_icon.stop()
+        
+        # Clean up single instance resources
+        self.cleanup_single_instance()
         
         if self.root:
             self.root.quit()
